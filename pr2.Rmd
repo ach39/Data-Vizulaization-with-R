@@ -1,0 +1,2078 @@
+---
+title: 'Project 2: Modeling and Evaluation'
+author: "achauhan39 (GTid :903271003) v1"
+subtitle: '<p>CSE6242 - Data and Visual Analytics</p><p>Due: Friday, April 21, 2017
+  at 11:59 PM UTC-12:00 on T-Square</p>'
+output:
+  html_document: default
+  #pdf_document: default
+  
+
+version: Code cleanup - Apr-21-2017 (10:00am)
+---
+
+
+
+****************************
+
+<br>
+
+# Notes 
+
+1.  Please note that I haven't included code in the report for sake of readbility.I have tried to stay clear and concise as much as possible, which should make up for not having code in the pdf.But if you feel this is not enough in some instances, please refer to the code in pr2.RMD.
+
+2. **Report Format**  - Report follows following format.    
+
+        Each Task has 3 sub-sections
+            a. subsection-1 contains 
+                + answer to the question asked 
+                + overview of experiments conducted and steps taken to complete that task.
+                + benchmark results (see #3 below)
+              
+            b. subsection-2 provides supporting data for the task,which includes relevant R-command output and graphs.
+            c. subsection-3    
+                +  provides numerical and graphical view of RMSE of train and test set.
+                + RMSE is average of 30 iterations.
+                +  Final list of features (after performing Feature-selection) used for that task.       
+          
+          
+ 
+3. **Benchmarking**    
+    
+      I established following benchmark so that I could compare performance of one task to another,on same grounds.
+    
+          Compute train_RMSE,test_RMSE, R-Square and Adj-R.Squared by averaging results over 60 iterations.
+          Each iteration randomly samples 70% data for train and 30% for test.
+
+4. **RMSE charts**
+
+    + Test_RMSE values for model built using 5% -15% of train-data are quite high in some cases and blow up y-scale.This hinders visualization of RMSE for other models.Hence I have limited y-axis to (6e7, 1.5e8) for RMSE charts.Therefore you may see RMSE value for train_size 5%-15% not plotted in some charts.
+        
+    + To compensate for this data chopping,I am displaying numerical values of RMSE,along with the chart.So please refer to that incase you would like to see the RMSE numbers.
+
+      
+      
+5. Please note that I have put code for RFE( Recursive Feature Elimination) under flag `RFE_FLAG`, which is disabled for submitted-code because it takes a long time to run the algorithm. If you would like to see RFE output,set RFE_FLAG=1 in chunk named 'load_data' below.
+
+
+6. **Task-5** uses LDA (Latent Dirichlet Allocation) which takes about 4-8 minutes to run.
+
+
+7.  **Overall Approach**
+
+    I started out by evaulating relationship of each feature with `Gross` but soon realised that there way too many features to be explores manually and I need to automate the process of feature selection. 
+    + For each task, I start with a model (based on randomly selected 70% samples from dataset) with all possible explanatory variables and then perform feature selection via RFE and/or manual inspection of p-values of the features.
+        I am using RFE (Recursive Feature Elimination) function from `carat` package for this purpose.RFE is set to use Random Forest algorithm and performs 10 iterations, to evaluate the model.    
+        
+    + For missing numerical values I impute the feature (by using median value). For missing categorical values, I exclude those rows.    
+    + No new feature should use 'Gross' in any manner.Scale feature if need be.
+    
+
+8. I have added a section (#6) at the end that summarizes results from each task for easy comparision. 
+
+
+<br>
+
+### Libraries used : 
+      + library(ggplot2)   
+      + library(GGally)    
+      + library(tm)    
+      + library(gridExtra)   
+      + library(reshape2)   
+      + library(plyr)   
+      + library(dplyr)   
+      + library(Hmisc)   
+      + library(corrplot)
+      + library(memisc)
+      + library(caret)
+      + library(mlbench)
+      + library(e1071)
+      + library(randomForest)
+      + library(lubridate)
+      + library(topicmodels)
+      + library(SnowballC)
+  
+  
+  
+****************************
+    
+    
+```{r global_options ,echo=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+
+#fig.width=6 ,fig.height=4
+```
+
+
+# Data
+
+We will use the same dataset as Project 1: [`movies_merged`](https://s3.amazonaws.com/content.udacity-data.com/courses/gt-cs6242/project/movies_merged).
+
+# Objective
+
+Your goal in this project is to build a linear regression model that can predict the `Gross` revenue earned by a movie based on other variables. You may use R packages to fit and evaluate a regression model (no need to implement regression yourself). Please stick to linear regression, however.
+
+# Instructions
+
+You should be familiar with using an [RMarkdown](http://rmarkdown.rstudio.com) Notebook by now. Remember that you have to open it in RStudio, and you can run code chunks by pressing *Cmd+Shift+Enter*.
+
+Please complete the tasks below and submit this R Markdown file (as **pr2.Rmd**) containing all completed code chunks and written responses, as well as a PDF export of it (as **pr2.pdf**) which should include all of that plus output, plots and written responses for each task.
+
+_Note that **Setup** and **Data Preprocessing** steps do not carry any points, however, they need to be completed as instructed in order to get meaningful results._
+
+# Setup
+
+Same as Project 1, load the dataset into memory:
+
+```{r load_data}
+load('movies_merged')
+verbose=0
+RFE_FLAG=0
+```
+
+This creates an object of the same name (`movies_merged`). For convenience, you can copy it to `df` and start using it:
+
+```{r}
+df = movies_merged
+cat("Dataset has", dim(df)[1], "rows and", dim(df)[2], "columns", end="\n", file="")
+colnames(df)
+```
+
+## Load R packages
+
+Load any R packages that you will need to use. You can come back to this chunk, edit it and re-run to load any additional packages later.
+
+```{r load_packages, include=FALSE}
+library(ggplot2)
+library(GGally)
+library(tm)
+library(gridExtra)
+library(reshape2)
+library(plyr)
+library(dplyr)
+library(Hmisc)
+
+library(corrplot)
+library(memisc)
+library(caret)
+#library(VIF)
+#library(Boruta)
+#library(scatterplot3d)
+
+library(mlbench)
+library(e1071)
+library(randomForest)
+library(lubridate)
+library(topicmodels)
+library(SnowballC)
+
+```
+
+If you are using any non-standard packages (ones that have not been discussed in class or explicitly allowed for this project), please mention them below. Include any special instructions if they cannot be installed using the regular `install.packages('<pkg name>')` command.
+
+**Non-standard packages used**: None
+
+# Data Preprocessing
+
+Before we start building models, we should clean up the dataset and perform any preprocessing steps that may be necessary. Some of these steps can be copied in from your Project 1 solution. It may be helpful to print the dimensions of the resulting dataframe at each step.
+
+## 1. Remove non-movie rows
+
+```{r}
+# TODO: Remove all rows from df that do not correspond to movies
+table(movies_merged$Type)
+df = subset(df, Type=='movie')
+cat("Number of rows with Type = Movie : " , nrow(df))
+
+```
+
+## 2. Drop rows with missing `Gross` value
+
+Since our goal is to model `Gross` revenue against other variables, rows that have missing `Gross` values are not useful to us.
+
+```{r}
+# TODO: Remove rows with missing Gross value
+#nrow(df)
+df = subset(df, !is.na(df['Gross']))
+df = subset(df, df['Gross']>0)
+cat("Number of rows after removing Gross= NA|0 : ", nrow(df))
+
+```
+
+**A** 
+
+please note that  I'm exlcuding Gross=0 as well  because intuitvely it doesnot make sense that movie didn't earn even a single dollor and inculsion of Gross=0 can potentially skew the analysis.
+
+
+## 3. Exclude movies released prior to 2000
+
+Inflation and other global financial factors may affect the revenue earned by movies during certain periods of time. Taking that into account is out of scope for this project, so let's exclude all movies that were released prior to the year 2000 (you may use `Released`, `Date` or `Year` for this purpose).
+
+```{r}
+# TODO: Exclude movies released prior to 2000
+df = subset(df, df['Year'] >= 2000)
+cat("Number of rows after excluding movies released prior to 2000 : ", nrow(df))
+
+```
+
+## 4. Eliminate mismatched rows
+
+_Note: You may compare the `Released` column (string representation of release date) with either `Year` or `Date` (numeric representation of the year) to find mismatches. The goal is to avoid removing more than 10% of the rows._
+
+```{r}
+# TODO: Remove mismatched rows
+df$Released_dt = df$Released
+#df$Rel_month = as.numeric(substr(df$Released,6,7))
+#df$Released = as.numeric(substr(df$Released,1,4))
+
+#df$Rel_month = lubridate::month(df[,'Released_dt'])
+df$Released  = lubridate::year(df[,'Released_dt'])
+
+#t=df[,c('Released_dt','Rel_month','Released' )]
+#write.csv(df, "chck_point4.csv") 
+
+cat("DataFrame size :",  nrow(df))
+cat("We don't want to remove more than 10% of the rows that have a `Gross` value present : " , floor(nrow(df)*.1))
+cat("Number of rows where variable 'Released' and 'Year' don't match : " , nrow(subset(df, df$Released != df$Year)))
+
+#cat("Rows where Year_Diff > 1 can be removed : " , nrow(subset(df, abs(df$Released - df$Year) > 1 )))
+
+cat("Movie count by year_mismatch bin :")
+
+df['year_diff'] = (df$Released - df$Year)
+table(df['year_diff'] )
+
+#remove where year diff >1
+df = subset(df, abs(df$Released - df$Year) <= 1 )
+#table(df['year_diff'] )
+
+```
+
+
+```{r}
+
+#Remove less than 306 out of 526 mismatched rows, to stay within 10% limit.
+
+df_year_fixed = subset(df, (df$Released == df$Year))
+
+temp_df = subset(df, (df$Released != df$Year))  
+add_back = temp_df[-sample(1:nrow(temp_df),200), ]
+df_year_fixed = rbind(df_year_fixed, add_back )
+
+# nrow(temp_df)
+# nrow(add_back)
+# nrow(df_year_fixed)
+
+df = df_year_fixed
+#table(df['year_diff'] )
+print("Number of rows removed : 271 (8.8%) [15 rows had year/released info missing,56 rows had year_diff>1 and 200 had year_diff=1] ")
+cat("Resulting dataframe size : ", dim(df))
+
+df$year_diff=NULL
+
+```
+**A**
+
+Ideally I would have kept rows where Year and Released_year differ only by 1 because it is highly unlikely that two movies with same title are released within a year. But this clause would have caused removal_rate to be ~2%, which is not acceptable as per TA's response on piazza.
+
+In this step I removed 8.8% (271/306) rows where `Released` and `Year` mismatched.
+
+
+
+## 5. Drop `Domestic_Gross` column
+
+`Domestic_Gross` is basically the amount of revenue a movie earned within the US. Understandably, it is very highly correlated with `Gross` and is in fact equal to it for movies that were not released globally. Hence, it should be removed for modeling purposes.
+
+```{r}
+# TODO: Exclude the `Domestic_Gross` column
+df= df[,-which(names(df) == "Domestic_Gross")]
+cat("Dropped Domestic_Gross.")
+
+```
+
+## 6. Process `Runtime` column
+
+```{r}
+# TODO: Replace df$Runtime with a numeric column containing the runtime in minutes
+# check runtime format - its a combination of hours and minutes
+rt_format = unique(df$Runtime)
+
+
+RTnum = c()
+for(i in seq_along(df$Runtime)) {
+  x = unlist(strsplit(df$Runtime[i], " "))
+
+  if(length(x) == 4) {
+    if(x[2] == 'h' & x[4] == 'min'){
+      RTnum = c(RTnum , as.numeric(x[1])*60 + as.numeric(x[3]))
+    }
+    else{ print("4:error")}
+    
+  }
+  else if (length(x) == 2){
+    if(x[2] == 'h') 
+      { RTnum = c(RTnum ,as.numeric(x[1])*60 ) }
+    else if(x[2] == 'min') 
+      { RTnum = c(RTnum, as.numeric(x[1])) }
+    else { print("2:error") }
+  }
+  else {RTnum = c(RTnum , NA)}
+
+}
+
+#df$Runtime_str = df$Runtime
+df$Runtime = RTnum
+
+print (" Runtime Summary : ")
+summary(df$Runtime)
+
+
+```
+
+## 7. Perform any additional preprocessing
+
+Perform any additional preprocessing steps that you find necessary, such as dealing with missing values or highly correlated columns (feel free to add more code chunks, markdown blocks and plots here as necessary).
+
+<br>
+
+#### 7.1 Checking correlation between numeric variables to eliminate any redundant features.
+```{r}
+# 7. TODO(optional): Additional preprocessing
+
+# check correlation plot
+df_cor = select_if(df, is.numeric)
+for(i in seq(1,ncol(df_cor))){
+df_cor[, i][is.na(df_cor[,i])] = median(df_cor[,i], na.rm = T)
+}
+
+M <- cor(df_cor)
+corrplot(M,  method="circle" , type="lower", title="Correlation Plot for numeric features",
+         mar=c(0,0,1,0), order="hclust", diag=FALSE )
+
+
+```
+
+
+```{r}
+
+#write.csv(df,"chk_point_7.csv")
+
+#plot principal components
+# pcs <- prcomp(df_cor, center = T, scale. = T ) #, tol = 0.8)
+# print(pcs)
+# plot(pcs, type = "l")
+
+# convert Rated to factor
+# Cols that can be dropped - Type,Response,ImdbId,Poster, [URL , website, Date ]
+# 
+df_step6 = df
+
+df$Type = NULL
+df$Response = NULL
+df$imdbID = NULL
+df$Poster = NULL
+
+#Since TomatoMeter and TomatoReviews are function of TomatoFresh and TomatoRotten , only one set of these parameters are kept.
+df$tomatoReviews = NULL
+df$tomatoMeter = NULL
+
+
+df$Released = NULL
+df$Date = NULL
+
+df_step7 = df
+
+```
+
+
+**Answer**
+
+1. Removed columns - `Type`and `Response`. These features have constant value and hence don't add any value.
+
+2. Also removed `Poster` as I don't inted to any image analysis in this project.
+
+3. From correlation plot (shown above),it is evident that
+     +  `Date`, `Year` and `Released` variables are highly correlated (>0.99).
+     +  Also,`TomatoMeter` and `TomatoRating` are are highly correlated.    
+     
+     
+4.  Since we don't want redundant features in our dataset   
+     a.  `Date` and `Released` features were dropped.    
+     b.  `TomatoMeter` was dropped.   
+     c.  Since `TomatoReviews` = `TomatoFresh` + `TomatoRotten` , `TomatoReviews` features was dropped.     
+
+
+     
+   
+_**Note**: Do NOT convert categorical variables (like `Genre`) into binary columns yet. You will do that later as part of a model improvement task._
+
+## Final preprocessed dataset
+
+Report the dimensions of the preprocessed dataset you will be using for modeling and evaluation, and print all the final column names. (Again, `Domestic_Gross` should not be in this list!)
+
+```{r}
+# TODO: Print the dimensions of the final preprocessed dataset and column names
+#,!(colnames(dd) %in% c("A", "B"))]
+df_t = df[, !(colnames(df) %in% c("Released_dt"))]
+
+cat("Step 7: Preprocessed DataFrame size : ", dim(df_t) , "\n")
+colnames(df_t)
+
+```
+
+
+```{r}
+# FEATURE SELECTION - RFE
+
+run_rfe <- function(df ,title){
+  
+  #tmp = df_numeric[, c("Year" , "Metascore")]
+  #dd[ ,!(colnames(dd) %in% c("A", "B"))]
+  
+  #df=df_numeric
+    
+  sapply(df, function(x) sum(is.na(x)))
+  df =  df[complete.cases(df),]
+  
+
+  X = df[, names(df) != "Gross"]
+  Y = df[, 'Gross']
+  
+  # define the control using a random forest selection function
+  control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+  
+  # run the RFE algorithm
+  results <- rfe(X, Y, sizes=c(1:ncol(X)), rfeControl=control)
+  
+  # summarize the results
+  print(results)
+  
+  # list the chosen features
+  l = predictors(results)
+  print(l)
+  
+  f=paste(title,'.png','')
+  #png(filename="RFE_Task-1.png")
+  plot(results, type=c("g", "o") , main = title, xlab="numeric variables")
+  #dev.off()
+
+}
+```
+
+
+```{r}
+# FEATURE SELECTION
+# run_boruta <- function (df) {
+# 
+#   set.seed(123)
+# 
+#   boruta.train <- Boruta(Gross ~ . , data = df, doTrace = 1)
+#   print(boruta.train)
+#   # All 11 attributes deemed inportant
+#   
+#   final.boruta <- TentativeRoughFix(boruta.train)
+#   print(final.boruta)
+#   
+#   #list of confirmed attributes
+#   getSelectedAttributes(final.boruta, withTentative = F)
+#   
+#   #create a data frame of the final result derived from Boruta.
+#   boruta.df <- attStats(final.boruta)
+#   
+# }
+
+
+```
+
+```{r}
+na_cnt <- function(df) {
+  sapply(df, function(x) sum(is.na(x)))
+  
+}
+
+#Impute dataframe
+impute_df <- function(df) {
+  for(i in seq(1,ncol(df)))
+    {
+      df[, i][is.na(df[,i])] = median(df[,i], na.rm = T)
+  }
+  return(df)
+}
+
+
+#implement function to average RMSE
+get_rmse <- function(train,test, verbose=F) {
+  model = lm(Gross ~ . , data = train)
+  s = summary(model)
+  
+  #check collinearity
+  #vif_= vif(model)
+  
+  #RMSE <- sqrt(mean((y-y_pred)^2))
+  diff = (train$Gross - predict(model,train))
+  train_rmse = sqrt(mean(diff^2))
+  
+  diff = (test$Gross - predict(model,test))
+  test_rmse = sqrt(mean(diff^2))
+  
+  if(verbose) {
+      cat("get_rmse() : " , "train_rmse=", train_rmse,  "test_rmse=", test_rmse,"\n") 
+      cat("R-sq= ",s$r.squared , "Adj R-sq=" , s$adj.r.squared 	, "\n")
+      print(s)
+  }
+  return(c(train_rmse, test_rmse , s$r.squared , s$adj.r.squared ))
+}
+
+
+
+#Plot RMSE data
+plot_avg_rmse <- function(data, iter=30, main="" ,ymin=6e7, ymax=1.5e8) {
+  train_sz = seq(5,95,5)
+  train_rmse_sz=c()
+  test_rmse_sz=c()
+  adj_r2_sz=c()
+  
+  for(i in train_sz){
+    train_rmse_iter=c()
+    test_rmse_iter=c()
+    adj_r2_iter=c()
+    sz = nrow(data) * i/100
+    
+    for(n in 1:iter){
+      idx = sample(1:nrow(data), sz, replace=FALSE)
+      train = data[idx,]
+      test  = data[-idx,]
+      res = get_rmse(train,test)
+      
+      #print(res)
+      
+      train_rmse_iter = c(train_rmse_iter, res[1])
+      test_rmse_iter  = c(test_rmse_iter , res[2])
+      adj_r2_iter     = c(adj_r2_iter    , res[4])
+    }
+    
+    avg_train_rmse = mean(train_rmse_iter)
+    avg_test_rmse = mean(test_rmse_iter)
+    avg_adj_r2 = mean(adj_r2_iter)
+    
+    #cat("train_rmse_iter :", train_rmse_iter, " | mean = ", avg_train_rmse, "\n")
+    #cat("test_rmse_iter  :", test_rmse_iter,   " | mean = ", avg_test_rmse, "\n")
+    #cat("adj_r2_iter      :", adj_r2_iter,   " | mean = ", avg_adj_r2, "\n")
+    
+    train_rmse_sz = c(train_rmse_sz ,avg_train_rmse )
+    test_rmse_sz  = c(test_rmse_sz ,avg_test_rmse )
+    adj_r2_sz     = c(adj_r2_sz, avg_adj_r2)
+  }
+  
+  
+  df = data.frame(train_size=train_sz, train_rmse = train_rmse_sz , test_rmse=test_rmse_sz, adj_r2 =adj_r2_sz )
+  print("RMSE DataFrame : avg of 30 iterations")
+  print(df)
+  
+  title = paste(main,"RMSE for different training-set sizes"," ")
+  ggplot(data=df,aes(x=train_size)) + 
+    geom_line(aes(y=train_rmse,color='train_rmse')) + geom_point(aes(y=train_rmse,color='train_rmse')) +
+    geom_line(aes(y=test_rmse,color='test_rmse')) +  geom_point(aes(y=test_rmse,color='test_rmse')) +
+    xlab("training set size (%)") +
+    ylab("RMSE") +
+    #scale_y_continuous(limits = quantile(df$test, c(0.01, 0.99))) +
+    ylim(ymin,ymax) +
+    scale_x_continuous(breaks=seq(0,100,10)) +
+    ggtitle(title)
+  
+  # p2=ggplot(data=df,aes(x=N)) + geom_line(aes(y=adj_r2))+
+  #   xlab("training set size (%)") +
+  #   ylab("Adj-R-squared") +
+  #   scale_x_continuous(breaks=seq(0,100,10)) +
+  #   ggtitle("Adj-R-squared ")
+    
+  #grid.arrange(p1,p2,ncol=2)
+}
+
+
+# Compute Benchmark
+run_bm <- function(data,verbose = FALSE, iter= 60 ,title="" ,tr_sz=0.7) {
+    train_rmse_iter =c()
+    test_rmse_iter  =c()
+    r2_iter         =c()
+    adj_r2_iter     =c()
+    
+    sz = nrow(data)*tr_sz
+    for(n in 1:iter){
+      idx = sample(1:nrow(data), sz, replace=FALSE)
+      train = data[idx,]
+      test  = data[-idx,]
+      res   = get_rmse(train,test)
+      
+      train_rmse_iter = c(train_rmse_iter, res[1])
+      test_rmse_iter  = c(test_rmse_iter , res[2])
+      r2_iter         = c(r2_iter        , res[3])
+      adj_r2_iter     = c(adj_r2_iter    , res[4])
+    }
+    avg_train_rmse = mean(train_rmse_iter)
+    avg_test_rmse  = mean(test_rmse_iter)
+    avg_r2         = mean(r2_iter)
+    avg_adj_r2     = mean(adj_r2_iter)
+    
+    if(verbose) {
+      cat("train and test size :" , nrow(train), nrow(test))
+      cat("train_rmse_iter : ", train_rmse_iter, " | mean = ", avg_train_rmse, "\n")
+      cat("test_rmse_iter  : ", test_rmse_iter,  " | mean = ", avg_test_rmse, "\n")
+      cat("_r2_iter        : ", r2_iter,         " | mean = ", avg_r2, "\n")
+      cat("adj_r2_iter     : ", adj_r2_iter,     " | mean = ", avg_adj_r2, "\n")
+    }
+  cat("\n",title, "Avg  train-rmse |test-rmse |R-sq |Adj R-sq : " , avg_train_rmse, avg_test_rmse, avg_r2, avg_adj_r2)
+    
+}
+
+#plot_avg_rmse(df_Q1,30, "Task 1:")
+#plot_avg_rmse(df_num2,30)
+
+```
+
+
+```{r}
+add_awards<- function(df){
+  
+  wins_list = c()
+  nominations_list =c()
+  total_awards_list=c()
+  
+  #df_awards = df[,c('Awards')]
+  #df_awards = subset(df_awards , df_awards$Awards != 'N/A')
+  
+  for(i in seq_along(df$Awards)) {
+    wins=0 
+    nominations=0
+    total_awards=0
+    
+    x= df$Awards[i]
+  
+    # total awards : wins + nominations
+    temp =  gregexpr("[0-9]+", x)
+    total_awards = sum(as.numeric(unlist(regmatches(x, temp))))
+    
+    # check for "x win"
+    temp = gregexpr("[0-9]+ win", x)
+    if(temp[[1]][1] != -1) {
+      phrase = regmatches(x, temp)
+      token = unlist(strsplit(phrase[[1]], " "))
+      wins = wins + as.numeric(token[1])
+    }
+    
+    #check for "Won x"
+    temp <- gregexpr("Won [0-9]+", x)
+    if(temp[[1]][1] != -1) {
+      phrase = regmatches(x, temp)
+      token = unlist(strsplit(phrase[[1]], " "))
+      wins = wins + as.numeric(token[2])
+    }
+    
+    nominations = total_awards - wins
+  
+    #nominations_list =c(nominations_list, nominations)
+    wins_list[i] = wins
+    nominations_list[i] = nominations
+    total_awards_list[i] = total_awards
+  
+  }
+  
+  df$Wins = wins_list
+  df$Nominations = nominations_list
+  df$TotalAwards = total_awards_list
+  
+  return(df)
+       
+}
+  
+  
+```
+
+
+```{r}
+# add_indcators<- function(df,colName ,topN=10) {
+# 
+# colName = 'Language'
+# topN=10
+#   
+# df_temp = df[ ,c(colName ,'Gross')]
+# 
+# # Create Indicator variable 
+# df_temp[colName] = gsub(",", " ", df_temp[colName])
+# 
+# corp  = Corpus(VectorSource(df[colName]))
+# dtm   = as.matrix(DocumentTermMatrix(corp))
+# freq  = colSums(dtm)
+# top   = sort(freq, decreasing = TRUE)[1:topN]
+# 
+# df_top = data.frame(dtm)  
+# 
+# # trim it to top 10 categories
+# df_top =  df_top[, names(top)]
+# 
+# }
+
+#add_indcators(df,'Language',10)
+
+```
+
+
+
+
+```{r}
+# TOP ACTORS
+top_actors <- function(df,topN=30,disp=TRUE) {
+  df_temp = df[ ,c('Actors' ,'Gross')]
+  
+  # Create Indicator variable 
+  df_temp$Actors = gsub(" ", "" ,  df_temp$Actors)
+  df_temp$Actors = gsub(",", " ", df_temp$Actors)
+  
+  corp  = Corpus(VectorSource(df_temp$Actors))
+  dtm   = as.matrix(DocumentTermMatrix(corp))
+  freq  = colSums(dtm)
+  top   = sort(freq, decreasing = TRUE)[1:topN]
+  
+  if(disp){
+    print("Top Actors :")
+    print(top)
+  }
+  
+  df_top = data.frame(dtm)  
+  df_top =  df_top[, names(top)]
+  return(df_top)
+}
+
+```
+
+```{r}
+# TOP DIRECTORS
+top_directors <- function(df,topN=30,disp=TRUE) {
+  df_temp = df[ ,c('Director' ,'Gross')]
+  
+  # Create Indicator variable 
+  df_temp$Director = gsub(" ", "" , df_temp$Director)
+  df_temp$Director = gsub("/", "" , df_temp$Director)
+  df_temp$Director = gsub(",", " ", df_temp$Director)
+  
+  corp  = Corpus(VectorSource(df_temp$Director))
+  dtm   = as.matrix(DocumentTermMatrix(corp))
+  freq  = colSums(dtm)
+  top   = sort(freq, decreasing = TRUE)[1:topN]
+  
+  if(disp){
+    print("Top Directors :")
+    print(top)
+  }
+  
+  df_top = data.frame(dtm)  
+  df_top =  df_top[, names(top)]
+  return(df_top)
+}
+```
+
+```{r}
+# TOP WRITERS  -- Needs special processing
+top_writers <- function(df,topN=30) {
+  df_temp = df[ ,c('Writer' ,'Gross')]
+  
+  # Create Indicator variable 
+  df_temp$Writer = gsub(" ", "" , df_temp$Writer)
+  df_temp$Writer = gsub("/", "" , df_temp$Writer)
+  df_temp$Writer = gsub(",", " ", df_temp$Writer)
+  
+  corp  = Corpus(VectorSource(df_temp$Writer))
+  dtm   = as.matrix(DocumentTermMatrix(corp))
+  freq  = colSums(dtm)
+  top   = sort(freq, decreasing = TRUE)[1:topN]
+  print(top)
+  
+  df_top = data.frame(dtm)  
+  df_top =  df_top[, names(top)]
+  return(df_top)
+}
+```
+
+
+```{r}
+# TOP GENRE  -- 
+top_genre <- function(df,topN=30,disp=TRUE) {
+  df_temp = df[ ,c('Genre' ,'Gross')]
+  
+  # Create Indicator variable 
+  df_temp$Genre = gsub(" ", "" , df_temp$Genre)
+  df_temp$Genre = gsub("-", "" , df_temp$Genre)
+  df_temp$Genre = gsub(",", " ", df_temp$Genre)
+  
+  corp  = Corpus(VectorSource(df_temp$Genre))
+  dtm   = as.matrix(DocumentTermMatrix(corp))
+  freq  = colSums(dtm)
+  top   = sort(freq, decreasing = TRUE)[1:topN]
+  
+  if(disp){
+    print("Top Genre :")
+    print(top)
+  }
+  
+  df_top = data.frame(dtm)  
+  df_top =  df_top[, names(top)]
+  return(df_top)
+}
+```
+
+```{r}
+# TOP Production  -- 
+top_production <- function(df,topN=30,disp=TRUE) {
+  df_temp = df[ ,c('Production' ,'Gross')]
+  
+  df_temp$Production = tolower(df$Production)
+  
+  # Create Indicator variable 
+  df_temp$Production1 = gsub("/", " " , df_temp$Production)
+  #df_temp$Production2 = sapply(df$Production1 , function(x){ strsplit(x, " ")[[1]][1]} )
+  
+  #df_temp$Production2 = sub("(\\w+)", "\\1", df_temp$Production1)
+  #df_temp$Production2 = strsplit(df_temp$Production1, " ")
+  #df_temp$Production3 = df_temp$Production2[1]
+  
+  #df_temp$Production2 = gsub(".", " " , df_temp$Production1)
+  #df_temp$Production = gsub(" ", "_", df_temp$Production)
+  
+  corp  = Corpus(VectorSource(df_temp$Production))
+  dtm   = as.matrix(DocumentTermMatrix(corp))
+  freq  = colSums(dtm)
+  top   = sort(freq, decreasing = TRUE)[1:topN]
+  
+  if(disp){
+    print("Top Production :")
+    print(top)
+  }
+  
+  top =c('warner','sony','universal','paramount','fox')  #'20th'
+  df_top = data.frame(dtm)  
+  df_top =  df_top[, top]
+  
+  return(df_top)
+}
+
+
+```
+
+
+
+# Evaluation Strategy ## START
+
+In each of the tasks described in the next section, you will build a regression model. In order to compare their performance, use the following evaluation procedure every time:
+
+1. Randomly divide the rows into two sets of sizes 5% and 95%.
+2. Use the first set for training and the second for testing.
+3. Compute the Root Mean Squared Error (RMSE) on the train and test sets.
+4. Repeat the above data partition and model training and evaluation 10 times and average the RMSE results so the results stabilize.
+5. Repeat the above steps for different proportions of train and test sizes: 10%-90%, 15%-85%, ..., 95%-5% (total 19 splits including the initial 5%-95%).
+6. Generate a graph of the averaged train and test RMSE as a function of the train set size (%).
+
+You can define a helper function that applies this procedure to a given model and reuse it.
+
+# Tasks
+
+Each of the following tasks is worth 20 points. Remember to build each model as specified, evaluate it using the strategy outlined above, and plot the training and test errors by training set size (%).
+
+<br>
+
+*******************************
+
+## 1. Numeric variables
+
+Use linear regression to predict `Gross` based on all available _numeric_ variables.
+
+**Q**: List all the numeric variables you used.
+
+**Answer**: 
+I visualised correlation between Gross and other numeric variables via scatterplot and corrleation plot(shown above), which showed that Gross has high postive correlation with Budget, ImdbVotes and tomatoUserReviews.
+
+Note : Highly correlated variable such as Date/Released were dropped in the previous step(#7)
+
+I then performed **feature selection** to eliminate variables that bring little benefit.  
+This was done by using RFE (Recursive Feature Elimination) function from `carat` package.
+
+  +   Random Forest algorithm was used on each of the ten iterations, to evaluate the model.    
+  +   set up was configured to explore all possible subsets of numeric attributes.
+  +   Algorithm determined following 6 features to be most improtant (listed in order of decreasing significance).    
+          **"Budget" ,"imdbVotes","tomatoUserReviews","imdbRating","tomatoUserRating","Year"**  
+        
+ <br>
+ 
+**Benchmark**  
+
+Avg RMSE and Adj-R.Squared over 60 iterations for 70-30 train-test split for above mentioned numeric variables is
+
+    Task-1 :  Avg  train-rmse |test-rmse |R-sq |Adj R-sq :  100806492 100810861 0.7221118 0.7211952
+
+<br>
+
+### Supporting data for Task-1
+
+<br>
+
+<!--
+#### 1.1 Output of RFE (Recursive Feature Elimination) for Task-1
+
+![](pics/RFE_Task1_text.png)
+
+<br>
+
+**Plot below shows accuracy of the different attribute subset sizes.Beyond first 5-6 attributes, there isn't much gain in accuracy.**  
+
+
+![](pics/RFE_Task1_chart.png)-->
+
+
+
+
+
+```{r}
+# TODO: Build & evaluate model 1 (numeric variables only)
+df_numeric = select_if(df, is.numeric)
+if(verbose) {
+  print("NAs in df_numeric_Task1 :")
+  na_cnt(df_numeric)
+}
+
+
+```
+
+#### 1.2 RMSE for Task-1
+
+```{r}
+#Run with RFE features 
+df_Q1 = df_numeric[complete.cases(df_numeric)  ,]
+#df_num2 = impute_df(df_numeric) 
+
+if(RFE_FLAG) run_rfe(df_Q1)
+
+RFE_cols = c("Budget" ,"imdbVotes","tomatoUserReviews","imdbRating","tomatoUserRating","Year", "Gross")
+df_Q1 = df_Q1[, RFE_cols]
+
+plot_avg_rmse(df_Q1,30, "Task 1:")
+
+run_bm(df_Q1,iter=60, verbose = FALSE , title=" Task-1 : ")
+
+```
+
+
+
+#### 1.3 Features used for Task-1
+
+```{r}
+cat("List of all numeric variables used : \n" )
+df_t = df_Q1[, !(colnames(df_Q1) %in% c("Gross"))]
+colnames(df_t)
+dim(df_t)
+
+```
+
+<br><br>
+
+*****************
+
+## 2. Feature transformations
+
+Try to improve the prediction quality from **Task 1** as much as possible by adding feature transformations of the numeric variables. Explore both numeric transformations such as power transforms and non-numeric transformations of the numeric variables like binning (e.g. `is_budget_greater_than_3M`).
+
+<br>
+
+```{r}
+compute_rmse<- function(model, train, test , log_log = FALSE , verbose=TRUE) {
+  
+  s=summary(model)
+  if(log_log == TRUE) 
+    { diff = (train$Gross - exp(predict(model,train))) }
+  else 
+    { diff = (train$Gross - predict(model,train)) }
+  
+  train_rmse = sqrt(mean(diff^2))
+  
+  if(log_log == TRUE) 
+   { diff = (test$Gross - exp(predict(model,test))) }
+  else
+   { diff = (test$Gross - predict(model,test)) }
+  
+  test_rmse = sqrt(mean(diff^2))
+  
+  if(verbose) {
+      if(log_log == TRUE) { cat ("Log Log Model \n") }
+      cat("get_rmse() : " , "train_rmse=", train_rmse/1e8,  "test_rmse=", test_rmse/1e8,"\n") 
+      cat("R-sq= ",s$r.squared , "Adj R-sq=" , s$adj.r.squared 	, "\n")
+      print(s)
+  }
+  
+  # plot residuals
+  plot(model)
+  #plot(density(resid(model))) #A density plot
+  #qqnorm(resid(model)) # A quantile normal plot - good for checking normality
+  #qqline(resid(model))
+
+}
+```
+
+
+**Q**: Explain which transformations you used and why you chose them.
+
+ 
+**Answer**: 
+
+
+**a) Inital Approach**
+
+For this exercise, I started building model with one explanatory variable at a time. I did three experiments, comparing most dominant features (as determined by RFE in previous section) with `Gross` on normal and log-log scale. **(graphs provided in section 2.2 below)**
+
+  1.  Gross ~ imdbVotes     
+  2.  Gross ~ imdbVotes + Budget      
+  3.  Gross ~ imdbVotes + Budget + tomatoUserReview     
+
+    **Experiment-1**  
+      + lm(Gross ~ imdbVotes) 	     :	 R-Sq =  0.4558 | RSS = 1.911e+16     
+      + lm(log(Gross)~log(imdbVotes) :	 R-Sq =  0.5542 | RSS = 2.903     
+    
+    **Experiment-2**   
+      + Normal scale  :	 R-Sq =  0.701  | RSS = 1.05e+16     
+      + Log-log scale :	 R-Sq =  0.6955 | RSS = 1.983     
+    
+    **Experiment-3**    
+      + Normal scale   : R-Sq = 0.7042 | RSS = 1.039e+16     
+      + Log-logs scale : R-Sq =  0.7233 | RSS = 1.802    
+
+<br>
+
+
+      **observations**  
+      
+    a)	Experiment-1 - Using log(Gross)~log(indbVotes) instead of normal scale, gives a significant boost to R-sq (0.45 to 0.55).Residuals are more centered around zero. (charts below)   
+      
+    b)	For experiement-2, when Budget is added to the mix, normal-scale model and log-log model don't show much difference in R-sq (0.70 vs. 0.69)   
+      
+    c)	For experiement-3, when Budget+tomatoUserReview is added to the mix, log-log model R-sq improves.(0.70 vs 0.72)    
+      
+      I would have continued this path ,if I knew how to add features that show linear relationship with Y on normal scale, to a log-log model .Discussed this during office-hours but didn't get a clear direction.
+
+<br>
+
+**b) Final Approach**
+
+So, I took another approach, where I computed log, square, cube and sqrt of all numeric variables and then selected features that were marked statistically significant (based on p value) and by RFE Algorithm to build a parsimonious model.
+
+List of features used in Task-2 :
+
+  +   **Features from Task-1** : "Budget" ,"imdbVotes","tomatoUserReviews","imdbRating","tomatoUserRating","Year"
+  +   **Transformed Features** : "sqr_tomatoUserReviews","cube_tomatoFresh","cube_tomatoUserReviews","cube_Budget"
+  +   **additional feature**   : "Runtime" (based on p-value)
+
+<br>
+
+**c) Bechmark** : 
+
+Avg RMSE and Adj-R.Squared over 60 iterations for 70-30 train-test split
+
+    Task-1 :  Avg  train-rmse |test-rmse |R-sq |Adj R-sq :  100806492 100810861   0.7221118   0.7211952
+    Task-2 :  Avg  train-rmse |test-rmse |R-sq |Adj R-sq :  91455596  93450148    0.7616484   0.7602976
+
+
+RMSE for train and test improved (7-9%) in Task-2 and so did accuracy(+5.5%)   
+
+### Supporting data for Task-2
+
+
+#### 2.1 RMSE for Task-2
+
+```{r}
+# Transform all numeric variables and select the one that help improve RMSE.
+
+func_name = c("log_", "sqr_", "cub_", "sqrt_")
+f_log = function(x) log10(x)
+f_sqr = function(x) x^2
+f_cub = function(x) x^3
+f_sqrt = function(x) sqrt(x)
+f_list = c(f_log, f_sqr, f_cub, f_sqrt)
+
+col_name = colnames(df_numeric) 
+col_name = col_name[-length(col_name)]  #exclude Gross
+
+
+df_numeric = impute_df(df_numeric)
+trans_df = data.frame(matrix(NA, nrow = nrow(df_numeric), ncol= 0))
+trans_col_names = c()
+
+for (i in seq_along(f_list)){
+    func <- f_list[i]
+    for (j in seq_along(col_name) )
+       {
+         # column name
+         new_col_name <- paste(func_name[i], col_name[j], sep = "") 
+         trans_col_names <- c(trans_col_names, new_col_name)
+         
+         #column value
+         new_col_val <- f_list[[i]](df_numeric[, col_name[j]] + 0.001)
+         trans_df <- cbind(trans_df, new_col_val)
+         
+         #cat("i,j : " , i , j , "new_col_name = ", new_col_name , "\n")
+      }         
+}
+
+colnames(trans_df) <- trans_col_names
+#str(trans_df)
+trans_df = as.data.frame(scale(trans_df))
+
+
+# create a new df with transformed features
+df_numeric_2 <-  cbind(df_numeric, trans_df)
+model_t <- lm(Gross ~., data = df_numeric_2)
+model_summary = summary(model_t)
+
+
+# Run RFE : select only relevant columns
+if(RFE_FLAG) run_rfe(df_numeric_2)
+
+to_select = model_summary$coef[-1,4] < 0.01 
+relevant = names(to_select)[to_select == TRUE]
+
+if(0) {
+  tmp_df = df_numeric_2[ ,c(relevant)]
+  tmp_df$Gross = df_numeric$Gross
+  run_bm(tmp_df,iter=60, verbose = FALSE , title=" Try-2 : ")
+}
+
+col_1 = c("log_Year","log_tomatoUserReviews","sqr_Year" ,"sqr_tomatoFresh", "sqr_Budget")         
+col_2 = c("sqr_tomatoUserReviews","cub_tomatoFresh","cub_tomatoUserReviews","cub_Budget") #***
+  
+relevant_cols = trans_df[,c(col_1,col_2)]
+df_numeric_3 = cbind(df_numeric,relevant_cols)
+
+model_t2 <- lm(Gross ~., data = df_numeric_3)
+summary_t2 = summary(model_t2)
+
+
+RFE_cols = c("Budget" ,"imdbVotes","tomatoUserReviews","imdbRating","tomatoUserRating","Year", "Gross")
+
+df_Q2 = df_numeric_3[, c(RFE_cols, col_2, "Runtime")]
+plot_avg_rmse(df_Q2,30 ," Task-2 : ")
+run_bm(df_Q2,iter=60, verbose = FALSE , title=" Task-2 : ")
+
+# ggplot(model_t, aes(x = .fitted, y = .resid)) + geom_point(aes(color='red', alpha=.3)) + 
+#   ggtitle("Residual Plot - Task-2") + theme(legend.position="none") +
+#   geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+
+
+# df_Q21 = df_numeric_3[, c(RFE_cols, col_2, "Runtime" )]
+# df_Q22 = df_numeric_3[, c(RFE_cols, col_2, "Runtime" ,"sqr_Budget")]
+# 
+# run_bm(df_Q21,iter=60, verbose = FALSE , title=" Task-2 : ")
+# run_bm(df_Q22,iter=60, verbose = FALSE , title=" Task-2 : ")
+
+```
+
+<br>
+
+#### Residual Plot for Task-2
+
+Residual plot doesn't show complete randomness (a desired quality of linear fit). Residual spread looks heteroscedastic, where residuals increase with increasing x.
+
+
+```{r,fig.width=4 ,fig.height=3}
+# p1= ggplot(model_t2, aes(x = .fitted, y = .resid)) + geom_point(shape=1 ,aes(alpha=0.1))+ 
+#    ggtitle("Residual Plot - Task2") + theme(legend.position="none") + 
+#    geom_hline(yintercept =0,linetype = "dotdash", color='purple') +
+#    ylim(-5e8,5e8) +xlim(0,1e9) 
+# 
+# p2=ggplot(model_t4, aes(sample=.resid))+ stat_qq() + ggtitle("QQplot")
+#  
+# grid.arrange(p1,p2,ncol=2)
+ 
+
+
+plot(model_t2)
+#anova(model_t2)
+
+```
+
+<br>
+
+#### List of features used in Task-2
+
+```{r}
+df_t = df_Q2[, !(colnames(df_Q2) %in% c("Gross"))]
+colnames(df_t)
+
+```
+
+<br><br>
+
+
+#### 2.2 Below is some additonal info/supporting data for three experiments I talked about in previous section
+
+<br>
+#### Experiment-1 : Gross ~ imdbVotes
+
+```{r,fig.width=6 ,fig.height=3}
+#Gross vs. ImdbVotes
+
+len = nrow(df_numeric)
+sz = floor(len *.8)
+idx = sample(1:len, sz, replace=FALSE)
+train = df_numeric[idx,]
+test  = df_numeric[-idx,]
+    
+m1=lm(Gross ~ imdbVotes, data=train)
+m2=lm(log(Gross) ~ log(imdbVotes), data=train)
+
+cat("lm(Gross ~ imdbVotes) :\t\t Adj R-Sq = ", summary(m1)$adj.r.squared, "| RSS =",mean(residuals(m1)^2),"\n")
+cat("lm(log(Gross)~log(imdbVotes) :\t Adj R-Sq = ", summary(m2)$adj.r.squared , "| RSS =",mean(residuals(m2)^2),"\n")
+
+p1= ggplot(m1, aes(x = .fitted, y = .resid)) + geom_point(aes(alpha=0.3)) + 
+  ggtitle("Y~x1") + theme(legend.position="none") + 
+  geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+p2= ggplot(m2, aes(x = .fitted, y = .resid)) + geom_point(aes(color='red', alpha=.3)) + 
+  ggtitle("log(Y)~log(x1)") + theme(legend.position="none") +
+  geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+
+grid.arrange(p1,p2,ncol=2)
+
+# par(mfrow=c(1,2)) 
+# plot(train$imdbVotes, residuals(m1) , main= "Gross vs. ImdbVotes+Budget" )
+# plot(train$imdbVotes, residuals(m2), main= "log-log model" )
+
+#plot(m2)
+
+```
+
+<br>
+#### Experiment-2 : Gross ~ imdbVotes + Budget
+
+```{r,fig.width=6 ,fig.height=3}
+##Gross vs. ImdbVotes+Budget
+m1=lm(Gross ~ imdbVotes + Budget, data=train)
+m2=lm(log(Gross) ~ log(imdbVotes)+log(Budget), data=train)
+
+
+cat("lm(Gross ~ imdbVotes+Budget) :\t\t\t Adj R-Sq = ", summary(m1)$adj.r.squared, "| RSS =",mean(residuals(m1)^2),"\n")
+cat("lm(log(Gross)~log(imdbVotes)+log(Budget) : Adj R-Sq = ", summary(m2)$adj.r.squared , "| RSS =",mean(residuals(m2)^2),"\n")
+
+p1= ggplot(m1, aes(x = .fitted, y = .resid)) + geom_point(aes(alpha=0.3)) + 
+  ggtitle("Y~x1+x2") + theme(legend.position="none") + 
+  geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+p2= ggplot(m2, aes(x = .fitted, y = .resid)) + geom_point(aes(color='red', alpha=.3)) + 
+  ggtitle("log(Y)~log(x1)+log(x2)") + theme(legend.position="none") +
+  geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+
+grid.arrange(p1,p2,ncol=2)
+
+#plot(m2)
+```
+
+<br>
+#### Experiment-3 : Gross ~ imdbVotes + Budget + tomatoUserReviews
+
+```{r,fig.width=6 ,fig.height=3}
+##Gross vs. ImdbVotes+Budget+TomatoUserRview
+m1=lm(Gross ~ imdbVotes + Budget +tomatoUserReviews, data=train)
+m2=lm(log(Gross) ~ log(imdbVotes)+log(Budget)+log(tomatoUserReviews), data=train)
+
+cat("lm(Gross ~ imdbVotes+Budget+tomatoUserReviews) :\t\t\t Adj R-Sq = ", summary(m1)$adj.r.squared, "| RSS =",mean(residuals(m1)^2),"\n")
+cat("lm(log(Gross)~log(imdbVotes)+log(Budget)+log(tomatoUserReviews) : Adj R-Sq = ", summary(m2)$adj.r.squared , "| RSS =",mean(residuals(m2)^2),"\n")
+
+p1= ggplot(m1, aes(x = .fitted, y = .resid)) + geom_point(aes(alpha=0.3)) + 
+  ggtitle("Y~x1+x2+x3") + theme(legend.position="none") + 
+  geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+p2= ggplot(m2, aes(x = .fitted, y = .resid)) + geom_point(aes(color='red', alpha=.3)) + 
+  ggtitle("log(Y)~log(x1)+log(x2)+log(x3)") + theme(legend.position="none") +
+  geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+
+grid.arrange(p1,p2,ncol=2)
+
+#cor.test(train$Gross, train$tomatoUserReviews)
+#cor.test(train$Gross, train$tomatoReviews)
+
+
+```
+
+
+<br><br>
+
+**********
+
+## 3. Non-numeric variables
+
+Write code that converts genre, actors, directors, and other categorical variables to columns that can be used for regression (e.g. binary columns as you did in Project 1). Also process variables such as awards into more useful columns (again, like you did in Project 1). Now use these converted columns only to build your next model.
+
+
+**Q**: Explain which categorical variables you used, and how you encoded them into features.
+
+**Answer**: 
+
+1.  **To develop my base-model for task-3 , I started out with following feature conversion, which gave me Adj-RSq of 0.18 and RMSE around 1.7e8.**
+
+    1.	 Convert Metascore to numeric.
+    2.	 Create 2 new features from `DVD` release-date namely `dvd_year` and `dvd_month`
+    3.	 create 3 new features from `Awards' namely `wins`,`nominations` and `total awards`
+    4.	 create a new features called `Language_cnt` that tracks in how many languages movie is available in.
+    5.	 create a new features called `Country_cnt` that tracks in how many countries movie was release in.
+    6.	 create a new features called `Genre_cnt` that tracks how many genres movie was tagged in.
+
+    Idea behind feature# 4 to 6 is that     
+    
+      a.  when a movie is released in multiple countries and or in multiple languages, studio expands its consumer base and thus movie might fetch more dollars.
+          
+      b.   By similar notion , a movie qualifying in multiple genres will have much broader appeal and hence more revenue.
+    
+    I tried using 'English vs. other' as a feature but it did no good as data-set is highly skewed towards 'English' movies.
+    
+    
+    Results with above mentioned six base features :   
+    
+      Base_features = c("Genre_cnt", "dvd_year", 'Wins','Nominations','dvd_month','Language_cnt','Country_cnt')
+
+        + Avg train |test |R-sq | Adj R-sq :  170054917 169820581 0.1867427 0.1836655
+        
+2.  **Next I created Binary indicators for actors, directors and tested with top 10,20 and 25 actor/director.Results for each trial, which consisted of 60 iterations on 70/30 train/test split is shown below.**   
+
+**With Top-20 actors and directors, results improved by 52% (0.183-> 0.279) **  
+
+  With top 10 actor/director  
+
+        + Avg train |test |R-sq | Adj R-sq :  167995281 167942840 0.2107646 0.1995575
+    
+  With top 20 actor/director  
+
+        + Avg train |test |R-sq | Adj R-sq :  158224606 162215002 0.296954 0.27922
+    
+  With top 25 actor/director  
+
+        + Avg train |test |R-sq | Adj R-sq :  157148844 164126760 0.3051888 0.28371
+        
+
+3.  **Another significant boost came by adding indicator variable for Genre, which further improved the results by 58%.(0.279 -> 0.452)**
+        
+  With top 20 actor/director + 15 genre  : Total 73 features
+
+        + Avg train |test |R-sq | Adj R-sq :  137240568 145081715 0.465022 0.4438736
+   
+4.  Above model used 73 features.I performed Feature selection,which was a combination of recommendation from RFE algorithm and manually inspecting p-value and managed to reduce the feature count from 73 to 34, without sacrificing performance.
+
+**Benchmark**
+
+        + Avg train |test |R-sq | Adj R-sq :  137959535 144395451 0.4616654 0.4519258
+
+<br>
+
+### Supporting data for Task-3
+
+```{r}
+df_cat = df
+df_cat = add_awards(df_cat)
+df_cat$tomatoImage = as.factor(df_cat$tomatoImage)
+
+df_cat$Metascore = as.numeric(df_cat$Metascore)
+df_cat$Genre_cnt = sapply(df_cat$Genre , function(x) length(strsplit(x,",")[[1]]) )
+df_cat$dvd_year  = lubridate::year(df_cat[,'DVD'])
+df_cat$dvd_month = lubridate::month(df_cat[,'DVD'])
+
+df_cat$Language_cnt = sapply(df$Language , function(x) length(strsplit(x,",")[[1]]) )
+df_cat$Country_cnt  = sapply(df$Country , function(x) length(strsplit(x,",")[[1]]) )
+
+
+# "Metascore",
+col_1 = c( "Genre_cnt", "dvd_year", 'Wins', 'Nominations','dvd_month',
+          'Language_cnt','Country_cnt')
+df_tmp = df_cat[, c(col_1 ,'Gross')]
+df_tmp = df_tmp[complete.cases(df_tmp),]
+
+if(verbose) run_bm(df_tmp,iter=60, verbose = FALSE)
+
+## Add Actor,Director, Genre
+df_tmp = df_cat[, c(col_1 ,'Gross')]
+df_tmp = cbind(df_tmp , top_actors(df,25))
+df_tmp = cbind(df_tmp , top_directors(df,25))
+df_tmp = cbind(df_tmp , top_genre(df,15))
+
+df_tmp = df_tmp[complete.cases(df_tmp),]
+if(verbose) run_bm(df_tmp,iter=60, verbose = FALSE)
+
+#run_rfe(df_tmp)
+
+m1=lm(Gross ~. , df_tmp)
+model_summary = summary(m1)
+
+#run with features that are marked significant
+to_select = model_summary$coef[-1,4] < 0.1
+relevant = names(to_select)[to_select ==TRUE]
+
+df_Q3 = df_tmp[, c(relevant,'Gross')]
+model_t <- lm(Gross ~., data = df_Q3)
+summary_t3 = summary(model_t)
+
+```
+
+#### Summary of Model for Task-3
+
+```{r}
+summary_t3
+
+# ggplot(m1, aes(x = .fitted, y = .resid)) + geom_point(aes(alpha=0.3)) + 
+#   ggtitle("Residual Plot - Task3") + theme(legend.position="none") + 
+#   geom_hline(yintercept =0,linetype = "dotdash", color='purple')
+
+```
+
+
+#### RMSE for Task-3
+
+```{r}
+plot_avg_rmse(df_Q3,30 ,"Task-3 :", ymin=1.1e8,ymax=1.7e8)
+run_bm(df_Q3,iter=60, verbose = FALSE, title=" Task-3 : ")
+
+```
+
+
+#### List of features used for Task-3 :  
+
+```{r}
+df_t = df_Q3[, !(colnames(df_Q3) %in% c("Gross"))]
+colnames(df_t)
+
+```
+
+
+<br><br>
+
+******************************
+
+## 4. Numeric and categorical variables
+
+Try to improve the prediction quality as much as possible by using both numeric and non-numeric variables from **Tasks 2 & 3**.
+
+
+**Answer**
+
+1.  To improve prediction quality for Task-3, I had created 2 new features namely `dvd_year` and `dvd_month` in previous step. Now that I was combining Task-2 and Task-3,I found using month and year from `Released` is a better predictor. Hence `dvd_year` and `dvd_month` was dropped.
+
+2.  After adding Indicator variables for `Genre`, `Genre_count` feature became redundant.Hence it was dropped.
+
+3.  As next step, I created a new dataframe that combined features from Task-2 (transformed as well as regular) and Task-3 and performed feature selection(simlar to what was done in previous task). Feature selection was primarily based on RFE algorithm's output and manual inspection of p-values. This helped elimnate collinearity to a great extent and got rid of warning "prediction from a rank-deficient fit may be misleading" for training size >=50%
+
+
+**Benchmark**  
+
+Avg RMSE and Adj-R.Squared over 60 iterations for 70-30 train-test split
+
+    Task-4 :  Avg  train-rmse |test-rmse |R-sq |Adj R-sq :  88271282    92418857   0.7863317  0.7832437
+ 
+ 
+
+  
+### Supporting data for Task-4
+<br>
+
+```{r}
+# TODO: Build & evaluate model 4 (numeric & converted non-numeric variables)
+
+df$Rel_month = lubridate::month(df[,'Released_dt'])
+
+df_mix = df
+
+#Add columns from Task-1
+col_T1 = c("Gross", "Budget" ,"imdbVotes","tomatoUserReviews","imdbRating","tomatoUserRating","Year","Runtime", "Rel_month")
+df_mix = df[,col_T1]
+
+#Add columns from Task-2
+
+#"sqr_tomatoUserReviews","cub_tomatoFresh","cub_tomatoUserReviews","cub_Budget" 
+trans_df <- data.frame(matrix(NA, nrow = nrow(df), ncol= 0))
+trans_df$sqr_tomatoUserReviews    = df$tomatoUserReviews^2
+trans_df$cub_tomatoFresh          = df$tomatoFresh ^3
+trans_df$cub_tomatoUserReviews    = df$tomatoUserReviews ^3
+trans_df$cub_Budget               = df$Budget ^3
+
+trans_df = as.data.frame(scale(trans_df))
+
+df_mix = cbind(df_mix, trans_df)
+
+#Add columns from Task-3
+
+df_mix = add_awards(df_mix)
+df_mix$TotalAwards = NULL
+
+
+# df_mix$tomatoImage = as.factor(df_mix$tomatoImage)
+# df_mix$Metascore = as.numeric(df_mix$Metascore)
+# df_mix$Genre_cnt = sapply(df_mix$Genre , function(x) length(strsplit(x,",")[[1]]) )
+# df_mix$dvd_year  = lubridate::year(df_mix[,'DVD'])
+# df_mix$dvd_month = lubridate::month(df_mix[,'DVD'])
+
+df_mix$Language_cnt = sapply(df$Language , function(x) length(strsplit(x,",")[[1]]) )
+df_mix$Country_cnt  = sapply(df$Country , function(x) length(strsplit(x,",")[[1]]) )
+
+df_mix = cbind(df_mix , top_actors(df,25,FALSE))
+df_mix = cbind(df_mix , top_directors(df,25,FALSE))
+df_mix = cbind(df_mix , top_genre(df,15,FALSE))
+
+
+df_Q4 = df_mix[complete.cases(df_mix),]
+#df_Q4a = impute_df(df_mix)
+if(verbose) run_bm(df_Q4,iter=60, verbose = FALSE)
+
+if(RFE_FLAG) run_rfe(df_Q4)
+
+m=lm(Gross ~ ., df_Q4)
+model_summary = summary(m)
+
+if(verbose) {
+  print("Model Summary : Select only relevant feaures from this model ,using p-value/ RFE alogorithm.")
+  print(model_summary)
+}
+
+#run_rfe(df_Q4)
+
+# select significant features
+to_select = model_summary$coef[-1,4] <= 0.1
+relevant = names(to_select)[to_select ==TRUE]
+
+df_Q4 = df_Q4[, c(relevant,'Gross')]
+model_t4 <- lm(Gross ~., data = df_Q4)
+summary_t4 = summary(model_t4)
+
+
+# M <- cor(df_Q4)
+# corrplot(M,  method="circle" , type="lower", title="Correlation Plot Task-4",
+#          mar=c(0,0,1,0), order="hclust", diag=FALSE , tl.cex=0.6)
+
+```
+
+#### 4.1 RMSE for Task-4
+
+```{r}
+plot_avg_rmse(df_Q4,30 ,"Task-4 :")
+run_bm(df_Q4,iter=60, verbose = FALSE, title=" Task-4 : ")
+
+```
+
+#### 4.2 Summary of final model for Task-4
+
+```{r,fig.width=6 ,fig.height=3}
+summary_t4
+ p1=ggplot(model_t4, aes(x = .fitted, y = .resid)) + geom_point(aes(alpha=0.01)) + 
+   ggtitle("Residual Plot - Task4") + theme(legend.position="none") + 
+   geom_hline(yintercept =0,linetype = "dotdash", color='purple') +
+   ylim(-5e8,5e8) +xlim(0,1e9)
+
+ #p2= qqnorm(residuals(model_t4), main="QQplot- Task4") 
+ p2=ggplot(model_t4, aes(sample=.resid))+ stat_qq() + ggtitle("QQplot")
+ 
+# qqline(eruption.stdres) 
+ 
+ grid.arrange(p1,p2,ncol=2)
+```
+
+#### 4.3 features of final model for Task-4  
+
+```{r}
+df_t = df_Q4[, !(colnames(df_Q4) %in% c("Gross"))]
+colnames(df_t)
+```
+
+
+<br><br>
+  
+*********************************
+
+## 5. Additional features
+
+Now try creating additional features such as interactions (e.g. `is_genre_comedy` x `is_budget_greater_than_3M`) or deeper analysis of complex variables (e.g. text analysis of full-text columns like `Plot`).
+
+**Q**: Explain what new features you designed and why you chose them.
+
+
+**Answer**
+
+For this task, I started out with text analysis. `tomatoConsesus` and `Plot` features have free form text. My goal was to create a feature that can capture.
+
+  + crux of the plot 
+  + sentiment of tomatoConsesus
+  
+After some research, I decided to give Topic-Modeling a shot to achieve above objective. I used LDA(Latent Dirichlet Allocation) to detect the` theme` in free form text. LDA allows sets of observations to be explained by unobserved (hidden or latent) groups that explain why some parts of the data are similar.
+
+This step involved 
+
+  + **Corpus cleanup** :  
+      a) removal of punctuations, stopwords, numbers,any special symbol.  
+      b) stemming  
+  
+  + **Run LDA** : I used Gibbs Sampling.    
+      One thing I struggled with is how to pick optimal number of topics. After several trials with varying number of topics (parameter k), I settled at 5.  
+  
+  + **Process LDA output**:  LDA provides 
+      a) mapping of each document (row) to a topic .    
+      b) probability of each topic for every document.     
+
+
+I added TopicProbablities from above step to dataframe from Task-4. Unfortunately results were not great. This being my first class in Machine Learning, I spent a lot of time learning about LDA, but results were disappointing. There was little to no gain from this step.
+
+In an effort to improve model performance I tried few different things
+
++ I created a new feature that captures Budget$ per unit Runtime (Budget/Runtime)
++ Create binary indicator for  `tomatoImage` (fresh, certified, rotten)
++ Create binary indicator for `Rated` (PG,PG-13,R)
++ Is movie from top5 studios (Warner,Sony,Universal,Paramount,Fox).
+      +   This one was tricky as I had to perform string manipulation to ensure primary Studio is recognized properly (`Warner Bros. Pictures/Village Roadshow` vs. `Warner Bros. Pictures` vs. `WARNER BROTHERS PICTURES - all should be classified as Warner Brothers`)
+      
+Unfortunately, none of these changes brought any improvement.
+
+Finally, I added an interaction term (Budget:GenreType), which gave some boost (~0.96%) in R-Sq and RMSE.
+
+**Benchmark**
+
+    + Task-5 :  Avg  train-rmse |test-rmse |R-sq |Adj R-sq :  87032197 92133209 0.7940655 0.790507
+
+
+### Supporting Data for Task-5
+<br>
+
+```{r}
+#Clean up corpus
+cleanup_corpus <- function(c) {
+  
+  CorpusObj <- Corpus(VectorSource(c))
+  CorpusObj <- tm_map(CorpusObj, content_transformer(tolower))
+  toSpace   <- content_transformer(function(x, pattern) { return (gsub(pattern, " ", x))})
+  CorpusObj <- tm_map(CorpusObj, toSpace, "-")
+  CorpusObj <- tm_map(CorpusObj, toSpace, "'")
+  #CorpusObj <- tm_map(CorpusObj, toSpace, "`")
+  #CorpusObj <- tm_map(CorpusObj, toSpace, ".")
+  
+  CorpusObj <- tm_map(CorpusObj, removePunctuation)
+  CorpusObj <- tm_map(CorpusObj, removeNumbers)
+  CorpusObj <- tm_map(CorpusObj, removeWords, stopwords("english"))
+  CorpusObj <- tm_map(CorpusObj, stemDocument, language = "english") 
+  CorpusObj <- tm_map(CorpusObj, stripWhitespace) 
+    
+  return(CorpusObj)  
+}
+
+```
+
+
+```{r}
+#RUN LDA
+run_lda <- function(dtm ,k=5) {
+  #Set parameters for Gibbs sampling
+  burnin = 4000
+  iter   = 2000
+  thin   = 500
+  seed   = list(2003,5,63,100001,765)
+  nstart = 5
+  best   = TRUE
+  
+  #Run LDA using Gibbs sampling
+  ldaOut <-LDA(dtm,k, method='Gibbs', control=list(nstart=nstart, seed = seed, best=best, 
+                                                   burnin = burnin, iter = iter, thin=thin))
+  
+  return(ldaOut)
+
+}
+```
+
+
+```{r}
+run_topic_model <- function(feature ,k=5) {
+
+    print("Cleanup corpus...")
+    dtm = DocumentTermMatrix(cleanup_corpus(feature))
+    dtm1 = as.matrix(dtm)
+    #dim(dtm1)
+    #dtm1[1:20, 1:10] 
+    
+    #28 rows with all zeros - Not sure what to do with that
+    row_sum = apply(dtm, 1, FUN= sum)
+    zero_rows = which(row_sum == 0)
+    length(zero_rows)
+    
+    for(i in zero_rows){
+        col = sample(ncol(dtm1), 1)
+        dtm1[i, col] <- 1
+      }
+    
+    freq = colSums(dtm1)
+    sorted_term = order(freq, decreasing = TRUE)
+    print("Top-30 high-frequeny words: ")  
+    freq[sorted_term][1:30]
+    
+    print("Run LDA with k=5.")
+    ldaOut = run_lda(dtm1,k)
+    
+    # Print topics
+    ldaOut.topics <- as.matrix(topics(ldaOut))
+    print("Document to Topic  :  Table below shows number of documents per topic")
+    table(ldaOut.topics) 
+     
+    #top 10 terms in each topic
+    ldaOut.terms <- as.matrix(terms(ldaOut,10))
+    print("Top-10 terms for each topic : ")
+    print(ldaOut.terms)
+    
+    #probabilities associated with each topic assignment
+    topicProbabilities = as.data.frame(ldaOut@gamma)
+    colnames(topicProbabilities) = c("topic_1","topic_2", "topic_3", "topic_4", "topic_5")
+    print("Topic Probabilities : ")
+    head(topicProbabilities)
+    
+    #dim(topicProbabilities)
+    #dim(ldaOut.topics)
+    # k=5
+    # write.csv(ldaOut.topics, file=paste('LDAGibbs',k,'DocsToTopics.csv'))
+    # write.csv(ldaOut.terms,  file=paste('LDAGibbs',k,'TopicsToTerms.csv'))
+    # write.csv(topicProbabilities,file=paste('LDAGibbs',k,'TopicProbabilities.csv')) 
+  
+    return(topicProbabilities)
+}
+
+  
+```
+
+
+```{r lda}
+# TODO: Build & evaluate model 5 (numeric, non-numeric and additional features)
+test_knit=0
+if(test_knit) {
+  df_mix_2 = as.data.frame(read.csv("df_mix_2.csv"))
+}else
+  {
+  plot_topics = run_topic_model(df$Plot)
+  df_mix_2 = cbind(df_mix ,plot_topics )
+}
+
+
+if(0) {
+  #write.csv(df_mix_2, "df_mix_2.csv")
+
+  df_mix_2 = df_mix_2[complete.cases(df_mix_2),]
+  #df_Q4a = impute_df(df_mix)
+  #run_bm(df_mix_2,iter=60, verbose = FALSE)
+  
+  # select significant features 
+  m=lm(Gross ~ ., df_mix_2)
+  model_summary = summary(m)
+  print(model_summary)
+  
+  to_select = model_summary$coef[-1,4] <= 0.1
+  relevant = names(to_select)[to_select ==TRUE]
+  
+  df_Q5 = df_mix_2[, c(relevant,'Gross')]
+  model_t <- lm(Gross ~., data = df_Q5)
+  summary(model_t)
+  
+  
+  plot_avg_rmse(df_Q5,30 ,"Task-5 :")
+  run_bm(df_Q5,iter=60, verbose = FALSE, title=" Task-5 : ")
+}
+
+
+```
+
+
+
+```{r}
+get_rating <-function(df){
+ 
+    rate_df <- data.frame(matrix(0, nrow = nrow(df), ncol = 3))
+    colnames(rate_df) <- c("rate_PG", "rate_PG_13", "rate_R")
+    for(i in seq_along(df$Rated)){
+      if (df$Rated[i] == "PG"){
+        rate_df$rate_PG[i] = 1
+      }else if(df$Rated[i] == "PG-13"){
+        rate_df$rate_PG_13[i] =1
+      }else if(df$Rated[i] == "R"){
+        rate_df$rate_R[i] =1
+      }
+    }
+    # check the convertion is corrected or not
+    colSums(rate_df)
+    dim(rate_df)
+    return(rate_df)
+}
+
+```
+
+```{r}
+get_tomatoImage <-function(df){
+    img_df <- data.frame(matrix(0, nrow = nrow(df), ncol = 3))
+    
+    colnames(img_df) <- c("fresh", "certified", "rotten")
+    
+    for(i in seq_along(df$tomatoImage)){
+     
+      #if(is.na(df$tomatoImage[i])) break
+        
+      #cat("\n", i ,(df$tomatoImage[i]))
+    
+      if(df$tomatoImage[i] == "fresh"){
+        img_df$fresh[i] = 1
+       }else if(df$tomatoImage[i] == "certified"){
+         img_df$certified[i] =1
+      
+       }else if(df$tomatoImage[i] == "rotten"){
+         img_df$rotten[i] =1
+       }
+      
+    }
+    
+    # check the convertion is corrected or not
+    colSums(img_df)
+    dim(img_df)
+    return (img_df)
+}
+
+```
+
+```{r}
+# try creating new features - num of actors, production info , rating, budget/runtime
+
+df_mix_3 = df_mix_2
+df_mix_3 = cbind(df_mix_3 ,top_production(df,10,FALSE))
+df_mix_3$actor_cnt = sapply(df$Actors , function(x) length(strsplit(x,",")[[1]]) )
+df_mix_3$RT_bin = df$Runtime -(df$Runtime%%60)
+df_mix_3$Budget_time = df$Budget/df$Runtime 
+df_mix_3 = cbind(df_mix_3, get_rating(df), get_tomatoImage(df))
+
+## create a genre x budget
+df_genre_tmp = top_genre(df,10,FALSE)
+df_genre_budgt = df_genre_tmp * df$Budget
+col_name = colnames(df_genre_budgt)
+df_genre_tmp$Budget = df$Budget
+
+new_col_names=c()
+for(i in 1:length(col_name)) {
+  #print(col_name[i])
+  new_col_names[i] =paste("bdgt_",col_name[i],sep="")
+}
+colnames(df_genre_budgt)=new_col_names  # interaction - budget x Genre Type
+
+
+df_mix_3 = cbind(df_mix_3, df_genre_budgt)
+
+df_mix_3 = df_mix_3[complete.cases(df_mix_3),]
+
+#run_bm(df_mix_3,iter=60, verbose = FALSE)  -- test unpruned model
+
+#run_rfe(df_mix_3)
+
+# select significant features 
+m=lm(Gross ~ ., df_mix_3)
+model_summary = summary(m)
+#print(model_summary)  
+
+to_select = model_summary$coef[-1,4] <= 0.1
+relevant = names(to_select)[to_select ==TRUE]
+
+df_Q5 = df_mix_3[, c(relevant,'Gross')]
+model_t5 <- lm(Gross ~., data = df_Q5)
+
+```
+
+
+
+```{r}
+# try creating new features - num of actors, production info , rating, budget/runtime
+
+# df_mix_3 = df_mix_2
+# df_mix_3 = cbind(df_mix_3 ,top_production(df,10,FALSE))
+# df_mix_3$actor_cnt = sapply(df$Actors , function(x) length(strsplit(x,",")[[1]]) )
+# df_mix_3$RT_bin = df$Runtime -(df$Runtime%%60)
+# df_mix_3$Budget_time = df$Budget/df$Runtime 
+# df_mix_3 = cbind(df_mix_3, get_rating(df), get_tomatoImage(df))
+#  
+# df_mix_3 = df_mix_3[complete.cases(df_mix_3),]
+# #df_Q4a = impute_df(df_mix)
+# #run_bm(df_mix_2,iter=60, verbose = FALSE)
+# 
+# # select significant features 
+# m=lm(Gross ~ ., df_mix_3)
+# model_summary = summary(m)
+# print(model_summary)
+# 
+# to_select = model_summary$coef[-1,4] <= 0.1
+# relevant = names(to_select)[to_select ==TRUE]
+# 
+# df_Q5b = df_mix_3[, c(relevant,'Gross')]
+# model_t5 <- lm(Gross ~., data = df_Q5b)
+
+```
+
+#### 5.1 Model summary for Task-5
+
+```{r}
+summary(model_t5)
+
+```
+
+
+#### 5.2  RMSE for Task-5
+
+```{r}
+
+plot_avg_rmse(df_Q5,30 ,"Task-5 :")
+
+run_bm(df_Q5,iter=60, verbose = FALSE, title=" Task-5 : ")
+
+```
+
+```{r}
+# remove
+if(0) {
+  df_test =df
+  df_test = cbind(df_test ,top_production(df,10,FALSE))
+  df_test$actor_cnt = sapply(df$Actors , function(x) length(strsplit(x,",")[[1]]) )
+  df_test$RT_bin = df$Runtime -(df$Runtime%%60)
+  df_test$Budget_time = df$Budget/df$Runtime 
+  df_test = cbind(df_test, get_rating(df), get_tomatoImage(df))
+  write.csv(df_test,"df_test.csv")
+  
+  plot(df_test$Gross, df_test$Budget_time)
+  cor.test(df_test$Gross, df_test$Budget_time)
+  cor.test(df_test$Gross, df_test$Runtime)
+  cor.test(df_test$Gross, df_test$Budget)
+  cor.test(df_test$Gross, df_test$actor_cnt)
+  
+  
+    
+  qplot(data=df_test,as.factor(actor_cnt), Gross, geom='jitter',alpha=I(1/20))
+  qplot(data=df_test,as.factor(RT_bin), Gross, geom='jitter',alpha=I(1/20))
+  qplot(data=df_test,as.factor(tomatoImage), Gross, geom='jitter',alpha=I(1/20))
+  qplot(data=df_test,as.factor(Rated), Gross, geom='jitter',alpha=I(1/20))
+  
+}
+
+
+```
+
+
+******************************************
+
+## 6.Summary
+
+This section summarizes results from each task for easy comparision.
+
+Model saw a significant boost in performance going from Task 1->4.However, task-5 provided very little gain, despite trying complex text analysis such as LDA (latent Dirichlet allocation).
+
+<br>
+
+#### 6.1 Stat summary per Task
+
+  Table below shows RMSE and R-squared for each task's benchmark. 
+  
+  `where Benchmark RMSE and Adj-R.Squared is computed by averaging results over 60 iterations.Each iteration randomly sampled 70% data for train and 30% for test.`
+
+
+```{r}
+#With Task-3
+task      =c ('task-1' , 'task-2','task-3','task-4','task-5')
+train_rmse=c(	1.008E+08,	9.146E+07,	1.380E+08,	8.827E+07,	8.703E+07)
+test_rmse =c(	1.008E+08,	9.345E+07,	1.435E+08,	9.213E+07,	9.213E+07)
+r_sq	    =c(	0.7221,	0.7616,	0.4606,	0.7863,	0.7941)
+adj_r_sq  =c(	0.7212,	0.7603,	0.4512,	0.7832,	0.7905)
+
+perf_df = data.frame(task=task, train_rmse=train_rmse, test_rmse=test_rmse, 
+                      r_sq=r_sq , adj_r_sq=adj_r_sq)
+
+print(perf_df)
+
+```
+
+<br>
+
+#### 6.2 Graphical view - RMSE comparision per task
+
+Task-3 (based on categorical features only) had higher RMSE and was messing the y-scale.Hence it is avoided in graphical-view so that progression can be shown clearly.   
+Please note that numerical values for all tasks (including task-3) is provided in previous section(6.1).
+
+<br>
+
+```{r fig.height=4}
+#Plot RMSE
+#without Task-3
+task      =c ('task-1' , 'task-2','task-4','task-5')
+train_rmse=c(	1.008E+08,	9.146E+07,		8.827E+07,	8.703E+07)
+test_rmse =c(	1.008E+08,	9.345E+07,		9.242E+07,	9.213E+07)
+r_sq	    =c(	0.7221,	0.7616,		0.7863,	0.7941)
+adj_r_sq  =c(	0.7212,	0.7603,		0.7832,	0.7905)
+
+perf_df = data.frame(task=task, train_rmse=train_rmse, test_rmse=test_rmse, 
+                      r_sq=r_sq , adj_r_sq=adj_r_sq)
+
+p1 = ggplot(data=perf_df ,aes(x=task ,y=train_rmse)) + 
+  geom_bar(stat='identity', aes(fill=task)) + 
+  geom_text(aes(label= format(train_rmse, scientific=TRUE)), vjust=2,size=3) +
+  theme(legend.position="none" ) +
+  coord_cartesian(ylim=c(8e7,1.02e8)) +
+  ggtitle("Train RMSE per Task ")
+ 
+p2 = ggplot(data=perf_df ,aes(x=task ,y=test_rmse)) + 
+  geom_bar(stat='identity', aes(fill=task)) + 
+  geom_text(aes(label= format(test_rmse, scientific=TRUE)), vjust=2,size=3) +
+  theme(legend.position="none" ) +
+  coord_cartesian(ylim=c(8e7,1.02e8)) +
+  ggtitle("Test RMSE per Task ")
+
+grid.arrange(p1,p2,ncol=2)
+
+
+```
+
+<br>
+
+#### 6.3 Graphical view - R-Square and Adjusted R-Square comparision per task
+
+<br>
+
+```{r fig.height=4}
+
+p1 = ggplot(data=perf_df ,aes(x=task ,y=r_sq)) + 
+  geom_bar(stat='identity', aes(fill=task)) + 
+  geom_text(aes(label= r_sq), vjust=2,size=3) +
+  theme(legend.position="none" ) +
+  coord_cartesian(ylim=c(.70,.80)) +
+  ggtitle("R_Sq per Task ")
+ 
+p2 = ggplot(data=perf_df ,aes(x=task ,y=adj_r_sq)) + 
+  geom_bar(stat='identity', aes(fill=task)) + 
+  geom_text(aes(label= adj_r_sq), vjust=2,size=3) +
+  theme(legend.position="none" ) +
+  coord_cartesian(ylim=c(.70,.80)) +
+  ggtitle("Adj R_Sq per Task")
+
+grid.arrange(p1,p2,ncol=2)
+
+```
+
+<br>
+
+#### 6.4 %Improvment per task
+<br>
+Table below shows %change in RMSE and R-squared as Model sequentially evolved in each task.
+	
+% change |train rmse |	test rmse	|R-Sq	   | Adj R-Sq
+------- | ---------- | ---------- | ------ | -----
+From Task 1 -> 2|	-9.28% |	-7.30% |	5.48%	|5.42%
+From Task 2 -> 4|	-3.48% |	-1.10% |	3.24%	|3.02%
+From Task 4 -> 5|	-1.04% | 	-0.31% |  0.98%	|0.93%
+
+<br>
+
+#### 6.5 %Improvement going from Task 1->5
+<br>
+
+% change |train rmse |	test rmse	|R-Sq	   | Adj R-Sq
+------- | ---------- | ---------- | ------ | -----
+From Task 1 -> 5|	-13.66% |	-8.61% |	9.96%	| 9.61%
+
+
+
+************************************************************
+
