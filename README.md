@@ -1,1 +1,3 @@
-# CSE6242
+
+## CSE6242
+### Data Visiualization using R
